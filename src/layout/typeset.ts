@@ -24,8 +24,12 @@ export interface LayoutSettings {
 
 export interface TypesetResult {
   document: TypesetDocument
-  /** フォントにない文字（豆腐になる）と、その数 */
-  missing: Map<string, number>
+  /** フォントにない文字（豆腐になる）と、その数・最初に出るページ（0 始まり） */
+  missing: Map<string, { count: number; page: number }>
+  /** 版面の位置と大きさ（pt、仕上がりの左上が原点）。プレビューの枠に使う */
+  block: { x: number; y: number; width: number; height: number }
+  /** 版面の外の余白（mm）。左右は同じ、天地も同じ */
+  margins: { side: number; top: number }
   /** 版面の外の余白が、どこかで MIN_MARGIN より狭い */
   overflow: boolean
 }
@@ -41,7 +45,7 @@ export function typeset(source: string, font: Font, s: LayoutSettings): TypesetR
   const blockHeight = s.charsPerLine * size
   const right = (width + blockWidth) / 2
   const top = (height - blockHeight) / 2
-  const missing = new Map<string, number>()
+  const missing: TypesetResult['missing'] = new Map()
 
   const lines: Line[] = []
   for (const paragraph of parseText(source)) {
@@ -54,27 +58,35 @@ export function typeset(source: string, font: Font, s: LayoutSettings): TypesetR
   const pages: Page[] = []
   for (let i = 0; i < lines.length; i += s.linesPerPage) {
     const glyphs: PlacedGlyph[] = []
+    const page = pages.length
+    const onMissing = (ch: string) => {
+      const m = missing.get(ch)
+      if (m) m.count++
+      else missing.set(ch, { count: 1, page })
+    }
     lines.slice(i, i + s.linesPerPage).forEach((line, col) => {
       const cx = right - size / 2 - col * s.lineAdvance
       const items = line.hanging ? [...line.items, line.hanging] : line.items
       for (const it of items) {
         // 削った前の空きの分、全角の枠を前に出す
         const boxTop = top + (it.start - (it.unit.akiBefore - it.before)) * size
-        placeUnit(glyphs, font, it.unit, cx, boxTop, size, missing)
+        placeUnit(glyphs, font, it.unit, cx, boxTop, size, onMissing)
       }
     })
     pages.push({ glyphs })
   }
   if (pages.length === 0) pages.push({ glyphs: [] })
 
-  const overflow = blockWidth > width - 2 * MIN_MARGIN * MM || blockHeight > height - 2 * MIN_MARGIN * MM
-  return { document: { width, height, bleed: s.bleed * MM, pages }, missing, overflow }
+  const margins = { side: (width - blockWidth) / 2 / MM, top: (height - blockHeight) / 2 / MM }
+  const overflow = margins.side < MIN_MARGIN || margins.top < MIN_MARGIN
+  const block = { x: right - blockWidth, y: top, width: blockWidth, height: blockHeight }
+  return { document: { width, height, bleed: s.bleed * MM, pages }, missing, block, margins, overflow }
 }
 
-function placeUnit(out: PlacedGlyph[], font: Font, u: Unit, cx: number, boxTop: number, size: number, missing: Map<string, number>) {
+function placeUnit(out: PlacedGlyph[], font: Font, u: Unit, cx: number, boxTop: number, size: number, onMissing: (ch: string) => void) {
   const gidOf = (ch: string, vertical: boolean) => {
     const gid = font.glyphId(ch.codePointAt(0)!)
-    if (gid === 0) missing.set(ch, (missing.get(ch) ?? 0) + 1)
+    if (gid === 0) onMissing(ch)
     return vertical ? font.verticalGlyph(gid) : gid
   }
   const upm = font.unitsPerEm

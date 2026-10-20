@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 
 /**
@@ -29,10 +30,27 @@ function contentSecurityPolicy(): Plugin {
   }
 }
 
+/**
+ * フォント（.ttf?b64）を、base64 の文字列を返す JS モジュールにする。
+ * 公開版は CSP で fetch を禁止しているので、フォントもスクリプトとして読み込ませる（tonbo の CMap と同じ方法）。
+ */
+function fontAsModule(): Plugin {
+  return {
+    name: 'kumi-font',
+    enforce: 'pre',
+    load(id) {
+      if (!id.endsWith('.ttf?b64')) return
+      return `export default ${JSON.stringify(readFileSync(id.slice(0, -4)).toString('base64'))}`
+    },
+  }
+}
+
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
   // ほかの作品の開発サーバーと重ならないよう、ポートを固定する
   server: { port: 5197, strictPort: true },
   preview: { port: 5198, strictPort: true },
-  plugins: [contentSecurityPolicy(), react()],
+  // 同梱フォント（6MB の TTF を base64 にした 8MB）だけが大きい。最初の画面とは別のチャンクで後から読み込む
+  build: { chunkSizeWarningLimit: 9000 },
+  plugins: [fontAsModule(), contentSecurityPolicy(), react()],
 })
