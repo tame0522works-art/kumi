@@ -32,3 +32,11 @@ export const BLEED = 3
 export function settingsFor(format: Format): LayoutSettings {
   return { pageWidth: format.width, pageHeight: format.height, bleed: BLEED, ...format.defaults }
 }
+
+/** 版面の数値の入力できる範囲。小説の本文として現実的な値に絞る */
+export const SETTING_LIMITS = {
+  fontSize: { min: 6, max: 14, step: 0.5 },
+  charsPerLine: { min: 10, max: 60, step: 1 },
+  linesPerPage: { min: 4, max: 30, step: 1 },
+  lineAdvance: { min: 7, max: 40, step: 0.5 },
+} as const

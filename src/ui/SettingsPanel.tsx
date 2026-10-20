@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FORMATS, settingsFor } from '../layout/formats.ts'
+import { FORMATS, SETTING_LIMITS as LIMITS, settingsFor } from '../layout/formats.ts'
 import type { LayoutSettings } from '../layout/typeset.ts'
 
 interface Props {
@@ -7,14 +7,6 @@ interface Props {
   settings: LayoutSettings
   onChange: (formatId: string, settings: LayoutSettings) => void
 }
-
-/** 入力できる範囲。小説の本文として現実的な値に絞る */
-const LIMITS = {
-  fontSize: { min: 6, max: 14, step: 0.5 },
-  charsPerLine: { min: 10, max: 60, step: 1 },
-  linesPerPage: { min: 4, max: 30, step: 1 },
-  lineAdvance: { min: 7, max: 40, step: 0.5 },
-} as const
 
 type Field = keyof typeof LIMITS
 

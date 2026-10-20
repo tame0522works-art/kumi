@@ -34,12 +34,15 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
   // 縦の原点は「字の外形の上端 + 上の余白（vmtx の tsb）」。和文の字形ではほぼ全部が仮想ボディの上端にそろうので、
   // 既定値（DW2）をそれにして、外れる字形だけ W2 に書く
   const defaultVy = em(font.ascender)
+  const vyOf = (gid: number) => {
+    const box = font.bbox(gid)
+    return box ? em(box.yMax + font.topSideBearing(gid)) : defaultVy
+  }
   const widths: string[] = []
   const vertical: string[] = []
   for (const gid of gids) {
     widths.push(`${gid} [${em(font.advanceWidth(gid))}]`)
-    const box = font.bbox(gid)
-    const vy = box ? em(box.yMax + font.topSideBearing(gid)) : defaultVy
+    const vy = vyOf(gid)
     const w1 = -em(font.advanceHeight(gid))
     if (vy !== defaultVy || w1 !== -1000) vertical.push(`${gid} ${gid} ${w1} ${em(font.advanceWidth(gid)) / 2} ${vy}`)
   }
@@ -79,15 +82,22 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
         ops.push('/Artifact BMC')
         continue
       }
-      const tf = `/${g.mode === 'v' ? 'F1' : 'F2'} ${num(g.size)} Tf`
+      const tf = `/${g.mode === 'r' ? 'F2' : 'F1'} ${num(g.size)} Tf`
       if (tf !== current) {
         ops.push(tf)
         current = tf
       }
       // PDF は y が上向きなので反転する。横倒しは字の進む向きを下、字の上を右に回す
-      const x = num(g.x + doc.bleed)
-      const y = num(doc.height + doc.bleed - g.y)
-      const matrix = g.mode === 'r' ? `0 -1 1 0 ${x} ${y}` : `${num(g.scaleX ?? 1)} 0 0 1 ${x} ${y}`
+      let x = g.x + doc.bleed
+      let y = doc.height + doc.bleed - g.y
+      const sx = g.scaleX ?? 1
+      if (g.mode === 'h') {
+        // 縦中横も縦組みの字体（F1）で書く。横組みの字体に切り替えると、pdf.js などが本文を抜き出すときに
+        // 前後へ空白を補ってしまう（「午後3 時」）。縦組みでは文字位置が字の原点から (幅/2, vy) ずれた点なので、その分を足す
+        x += (sx * em(font.advanceWidth(g.gid))) / 2 / 1000 * g.size
+        y += (vyOf(g.gid) / 1000) * g.size
+      }
+      const matrix = g.mode === 'r' ? `0 -1 1 0 ${num(x)} ${num(y)}` : `${num(sx)} 0 0 1 ${num(x)} ${num(y)}`
       ops.push(`${matrix} Tm <${hex4(g.gid)}> Tj`)
     }
     if (ruby.length) ops.push('EMC')

@@ -3,18 +3,24 @@ import { download, fileStamp, readTextFile } from './file.ts'
 import { loadFont } from './font/load.ts'
 import type { Font } from './font/sfnt.ts'
 import { FORMATS, settingsFor } from './layout/formats.ts'
+import { PAGE_UNITS, padPages, type PageUnit } from './layout/pages.ts'
 import { MIN_MARGIN, typeset, type LayoutSettings } from './layout/typeset.ts'
 import { writePdf } from './pdf/write.ts'
 import sample from './samples/sample.txt?raw'
+import { loadDraft, saveDraft } from './storage.ts'
 import { Preview } from './ui/Preview.tsx'
 import { SettingsPanel } from './ui/SettingsPanel.tsx'
 
 export default function App() {
   const [font, setFont] = useState<Font | null>(null)
   const [fontError, setFontError] = useState('')
-  const [text, setText] = useState(sample)
-  const [formatId, setFormatId] = useState(FORMATS[0].id)
-  const [settings, setSettings] = useState<LayoutSettings>(settingsFor(FORMATS[0]))
+  // 前に開いたときの本文と設定があれば、そこから始める（なければ見本）
+  const [draft] = useState(loadDraft)
+  const [text, setText] = useState(draft?.text ?? sample)
+  const [formatId, setFormatId] = useState(draft?.formatId ?? FORMATS[0].id)
+  const [settings, setSettings] = useState<LayoutSettings>(draft?.settings ?? settingsFor(FORMATS[0]))
+  const [pageUnit, setPageUnit] = useState<PageUnit>(draft?.pageUnit ?? 1)
+  const [stored, setStored] = useState(true)
   const [page, setPage] = useState(0)
   const [showBlock, setShowBlock] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -24,9 +30,19 @@ export default function App() {
     loadFont().then(setFont, (e: unknown) => setFontError(e instanceof Error ? e.message : String(e)))
   }, [])
 
+  // 打つたびに書くと長い原稿で重くなるので、手が止まってから書く
+  useEffect(() => {
+    const t = setTimeout(() => setStored(saveDraft({ text, formatId, settings, pageUnit })), 500)
+    return () => clearTimeout(t)
+  }, [text, formatId, settings, pageUnit])
+
   // 入力のたびに組み直すと長い原稿で打鍵が重くなるので、組版は入力より一歩遅れてよい
   const deferredText = useDeferredValue(text)
-  const result = useMemo(() => (font ? typeset(deferredText, font, settings) : null), [font, deferredText, settings])
+  const typesetResult = useMemo(() => (font ? typeset(deferredText, font, settings) : null), [font, deferredText, settings])
+  // プレビューと PDF は、白ページを足したあとの文書を使う
+  const padded = useMemo(() => (typesetResult ? padPages(typesetResult.document, pageUnit) : null), [typesetResult, pageUnit])
+  const result = typesetResult && padded ? { ...typesetResult, document: padded.document } : null
+  const blanks = padded?.blanks ?? 0
   const pages = result?.document.pages.length ?? 0
   const current = Math.min(page, Math.max(0, pages - 1))
 
@@ -78,10 +94,26 @@ export default function App() {
                   }}
                 />
               </label>
-              <button type="button" onClick={() => setText(sample)}>
+              <button
+                type="button"
+                onClick={() => {
+                  // 保存してある自分の本文を、うっかり見本で上書きしないように
+                  if (text === sample || !text.trim() || confirm('いまの本文は消えて、見本に置き換わります。よろしいですか？')) {
+                    setText(sample)
+                    setPage(0)
+                  }
+                }}
+              >
                 見本に戻す
               </button>
             </div>
+            {stored ? (
+              <p className="hint">本文と設定は、この端末のブラウザに自動で保存します（ほかへは送りません）。</p>
+            ) : (
+              <p className="warn-text">
+                この端末に保存できませんでした（ブラウザの設定や容量のため）。再読み込みすると消えるので、原稿は手元に残しておいてください。
+              </p>
+            )}
             <p className="hint">
               ルビは pixiv の <code>[[rb:漢字 &gt; かんじ]]</code> と、カクヨム／青空文庫の <code>｜漢字《かんじ》</code> の両方が使えます。傍点は <code>《《強調》》</code>。
             </p>
@@ -128,8 +160,21 @@ export default function App() {
                 ) : (
                   <li className="ok">すべての字がフォントにあります</li>
                 )}
-                <li className="ok">{pages} ページ</li>
+                <li className="ok">{blanks > 0 ? `${pages - blanks} ページ＋白ページ ${blanks} ＝ ${pages} ページ` : `${pages} ページ`}</li>
               </ul>
+              <label className="page-unit">
+                ページ数を
+                <select value={pageUnit} onChange={(e) => setPageUnit(Number(e.target.value) as PageUnit)}>
+                  {PAGE_UNITS.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="hint">
+                白ページは最後に足します。印刷所のページ数の決まり（とじ方ごとの倍数や、最低のページ数）は、入稿前チェッカーの tonbo でも確かめられます。
+              </p>
               <div className="row">
                 <button type="button" className="primary" onClick={save} disabled={saving}>
                   {saving ? 'PDF を作っています…' : 'PDF を保存'}

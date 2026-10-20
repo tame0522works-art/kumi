@@ -92,6 +92,41 @@ class Ui {
     }
   }
 
+  /** 「ページ数を」の選択欄で選ぶ */
+  async choosePageUnit(label: string) {
+    await this.page.run(`
+      const s = document.querySelector('.page-unit select');
+      const i = [...s.options].findIndex(o => o.textContent === ${JSON.stringify(label)});
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, s.options[i].value);
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    `)
+    await sleep(300)
+  }
+
+  /** 開き直す（保存した本文と設定が戻るかを見る） */
+  async reload() {
+    await this.page.send('Page.reload')
+    await sleep(300)
+    await this.page.waitFor(`document.readyState === 'complete' && document.querySelector('canvas.page:not(.blank)')`, '開き直し', 30_000)
+    await sleep(200)
+  }
+
+  textValue() {
+    return this.page.run<string>(`return document.querySelector('textarea').value`)
+  }
+
+  /** PDF を保存し、保存されたファイルの中身（latin1 の文字列）を返す */
+  async savePdf(): Promise<string> {
+    await this.click('button.primary')
+    let name = ''
+    for (let i = 0; i < 100 && !name; i++) {
+      name = readdirSync(this.files).find((f) => f.endsWith('.pdf')) ?? ''
+      if (!name) await sleep(100)
+    }
+    if (!name) throw new Error('PDF が保存されませんでした')
+    return readFileSync(join(this.files, name)).toString('latin1')
+  }
+
   settings() {
     return this.page.run<string[]>(`return [...document.querySelectorAll('.settings input')].map(i => i.value)`)
   }
@@ -109,13 +144,13 @@ class Ui {
     return this.page.run<string[]>(`return [...document.querySelectorAll('canvas.page')].map(c => c.classList.contains('blank') ? 'blank' : 'page')`)
   }
 
-  /** canvas に何か描かれているか（白でない画素の数） */
+  /** canvas に字が描かれているか（黒い画素の数。版面の枠は薄い色なので数えない） */
   inked(index: number) {
     return this.page.run<number>(`
       const c = document.querySelectorAll('canvas.page')[${index}];
       const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
       let n = 0;
-      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128 && d[i] < 100) n++;
       return n;
     `)
   }
@@ -217,6 +252,60 @@ const scenarios: Scenario[] = [
       // 判型を変えると、その判型の初期値が欄に出る
       await ui.choose('B6')
       assert.equal(await chars(), '42')
+    },
+  },
+  {
+    name: '保存: 本文・判型・版面・ページ数のそろえ方は、開き直しても残る',
+    async run(ui) {
+      await ui.open()
+      await ui.typeText('あ\n'.repeat(30) + '終わり')
+      await ui.choose('B6')
+      await ui.typeSetting('1行の字数', '40')
+      await ui.choosePageUnit('4 の倍数にする')
+      await sleep(800)
+      await ui.reload()
+      assert.equal(await ui.textValue(), 'あ\n'.repeat(30) + '終わり')
+      assert.ok((await ui.page.run<string>(`return document.querySelector('.settings select').selectedOptions[0].textContent`)).startsWith('B6'))
+      assert.deepEqual(await ui.settings(), ['9', '40', '18', '16'])
+      assert.equal(await ui.page.run(`return document.querySelector('.page-unit select').value`), '4')
+      assert.equal(await ui.pager(), '1 ページ（全 4 ページ）')
+    },
+  },
+  {
+    name: '見本に戻す: 自分の本文があるときは確かめ、断れば本文は残る',
+    async run(ui) {
+      await ui.open()
+      let answer = false
+      let asked = ''
+      ui.page.on('Page.javascriptDialogOpening', (p: { message: string }) => {
+        asked = p.message
+        void ui.page.send('Page.handleJavaScriptDialog', { accept: answer })
+      })
+      await ui.typeText('自分の原稿')
+      await ui.click('.source button', '見本に戻す')
+      assert.match(asked, /見本に置き換わります/)
+      assert.equal(await ui.textValue(), '自分の原稿')
+      answer = true
+      await ui.click('.source button', '見本に戻す')
+      await sleep(300)
+      assert.ok((await ui.textValue()).startsWith('　駅前の古書店'))
+    },
+  },
+  {
+    name: '白ページ: 4 の倍数にそろえると最後に白ページが足され、PDF のページ数も合う',
+    download: true,
+    async run(ui) {
+      await ui.open()
+      await ui.choosePageUnit('4 の倍数にする')
+      const checks = await ui.checks()
+      assert.equal(checks[2], 'ok:3 ページ＋白ページ 1 ＝ 4 ページ')
+      // 最後の見開きは、右が4ページ目（白）、左は裏表紙側で空き
+      await ui.click('.pager button', '次へ')
+      await ui.click('.pager button', '次へ')
+      assert.equal(await ui.pager(), '4 ページ（全 4 ページ）')
+      assert.deepEqual(await ui.canvases(), ['blank', 'page'])
+      assert.equal(await ui.inked(1), 0)
+      assert.ok((await ui.savePdf()).includes('/Count 4'))
     },
   },
   {

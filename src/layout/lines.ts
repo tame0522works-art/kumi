@@ -7,7 +7,7 @@
  * 段落の最終行は配らない（行頭そろえ）。
  */
 import { noLineEnd, noLineStart } from './classes.ts'
-import type { Unit } from './units.ts'
+import { RUBY_SCALE, type Unit } from './units.ts'
 
 export interface LineItem {
   unit: Unit
@@ -15,6 +15,12 @@ export interface LineItem {
   start: number
   before: number
   after: number
+  /**
+   * 行頭・行末でルビが版面の外へはみ出さないよう、親文字の前・後ろに足す空き（全角 = 1）。
+   * ルビのはみ出しは前後の仮名に掛けるものなので、行の端（隣の字が別の行）では掛けられない
+   */
+  lead: number
+  trail: number
 }
 
 export interface Line {
@@ -54,7 +60,7 @@ export function breakLines(units: Unit[], length: number): Line[] {
     const hangable = next.kind === 'char' && (next.headClass === 'period' || next.headClass === 'comma')
     if (hangable && (k + 1 === n || canBreakAt(k + 1))) {
       const line = arrange(units, s, k, length, false)
-      line.hanging = { unit: next, start: length, before: 0, after: 0 }
+      line.hanging = { unit: next, start: length, before: 0, after: 0, lead: 0, trail: 0 }
       lines.push(line)
       s = k + 1
       continue
@@ -75,21 +81,34 @@ export function breakLines(units: Unit[], length: number): Line[] {
   return lines
 }
 
-/** 行頭・行末の扱いを当てた空き。行頭の始め括弧は天付き（段落の頭は全角のまま）、行末の約物の後ろの空きは取る */
-function edgeAki(units: Unit[], s: number, e: number, i: number): { before: number; after: number } {
+/**
+ * 行頭・行末の扱いを当てた空き。行頭の始め括弧は天付き（段落の頭は全角のまま）、行末の約物の後ろの空きは取る。
+ * 行頭・行末に来たルビ付きの語は、はみ出す分だけ親文字を内側に寄せる
+ */
+function edgeAki(units: Unit[], s: number, e: number, i: number): { before: number; after: number; lead: number; trail: number } {
   const u = units[i]
   const before = i === s && !u.paragraphHead ? 0 : u.before
   const after = i === e - 1 ? 0 : u.after
-  return { before, after }
+  let lead = 0
+  let trail = 0
+  if (u.kind === 'ruby' && u.rubyOffsets?.length) {
+    const first = u.rubyOffsets[0]
+    const end = u.rubyOffsets[u.rubyOffsets.length - 1] + RUBY_SCALE
+    if (i === s && first < 0) lead = -first
+    if (i === e - 1 && end > u.size) trail = end - u.size
+  }
+  return { before, after, lead, trail }
 }
 
 const widthOf = (u: Unit, before: number, after: number) => u.size - (u.akiBefore - before) - (u.akiAfter - after)
+/** 行の中で占める長さ（行の端でルビのために足した空きを含む） */
+export const itemWidth = (it: LineItem) => widthOf(it.unit, it.before, it.after) + it.lead + it.trail
 
 function naturalWidth(units: Unit[], s: number, e: number): number {
   let w = 0
   for (let i = s; i < e; i++) {
-    const { before, after } = edgeAki(units, s, e, i)
-    w += widthOf(units[i], before, after)
+    const { before, after, lead, trail } = edgeAki(units, s, e, i)
+    w += widthOf(units[i], before, after) + lead + trail
   }
   return w
 }
@@ -108,7 +127,7 @@ function shrinkable(units: Unit[], s: number, e: number): number {
 function arrange(units: Unit[], s: number, e: number, length: number, last: boolean): Line {
   const items: LineItem[] = []
   for (let i = s; i < e; i++) items.push({ unit: units[i], start: 0, ...edgeAki(units, s, e, i) })
-  let diff = length - items.reduce((w, it) => w + widthOf(it.unit, it.before, it.after), 0)
+  let diff = length - items.reduce((w, it) => w + itemWidth(it), 0)
 
   if (diff < -EPS) {
     // 縮める順: 読点の後ろ → 中点の前後 → 終わり括弧の後ろ → 始め括弧の前
@@ -149,7 +168,7 @@ function arrange(units: Unit[], s: number, e: number, length: number, last: bool
       g++
     }
     it.start = pos
-    pos += widthOf(it.unit, it.before, it.after)
+    pos += itemWidth(it)
   })
   return { items }
 }

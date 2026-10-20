@@ -47,4 +47,7 @@ assert.equal(at, [...strip(expected)].length, `本文が途中で崩れている
 assert.ok([...rest].every((c) => rubyChars.has(c)), `本文でもルビでもない字: ${rest}`)
 // 親文字の直後にルビが来ていない
 for (const s of ['古書店は', '柊さんは', '活版で', '必ず手に入れること', '𩸽を焼く']) assert.ok(extracted.includes(s), `「${s}」が続けて読めない`)
+// 縦中横の前後に空白が入らない（空白を除く前の文で確かめる）
+const raw = body.join('')
+for (const s of ['午後3時', '第2版!?', '12冊']) assert.ok(raw.includes(s), `「${s}」が空白なしで読めない: ${raw.match(new RegExp(`.{0,4}${s[s.length - 1]}`))?.[0]}`)
 console.log(`check:pdf-text ok（${pdf.numPages} ページ、本文 ${[...strip(expected)].length} 字）`)

@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { parseFont } from '../src/font/sfnt.ts'
-import { breakLines, widthOf, type Line } from '../src/layout/lines.ts'
-import { buildUnits } from '../src/layout/units.ts'
+import { breakLines, itemWidth, type Line } from '../src/layout/lines.ts'
+import { buildUnits, RUBY_SCALE } from '../src/layout/units.ts'
 import { parseText } from '../src/text/parse.ts'
 
 const font = parseFont(new Uint8Array(readFileSync(new URL('../fonts/BIZUDMincho-Regular.ttf', import.meta.url))))
@@ -13,7 +13,7 @@ const text = (l: Line) => l.items.map((it) => it.unit.chars.join('')).join('') +
 const texts = (s: string, n: number) => lay(s, n).map(text)
 const lineLength = (l: Line) => {
   const last = l.items[l.items.length - 1]
-  return last.start + widthOf(last.unit, last.before, last.after)
+  return last.start + itemWidth(last)
 }
 const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-6, `${a} ≠ ${b}`)
 
@@ -80,6 +80,31 @@ assert.deepEqual(texts('あいう「えお」', 4), ['あいう', '「えお」'
   assert.equal(kan2.size, 1)
   assert.deepEqual(kan2.rubyOffsets, [-0.25, 0.25, 0.75])
 }
+// ルビのはみ出しは行の端では掛けない（隣の仮名が別の行にあるため）。行頭では親文字を寄せ、ルビを行頭にそろえる
+{
+  const lines = lay('あいう漢《かんじ》え', 3)
+  assert.deepEqual(lines.map(text), ['あいう', '漢え'])
+  const head = lines[1].items[0]
+  assert.equal(head.lead, 0.25)
+  close(head.start + head.lead + head.unit.rubyOffsets![0], 0)
+}
+// どの字数で組んでも、ルビは行の中（0〜字数）に収まる
+for (const src of ['あ漢《かんじ》いう漢字《かんじ》えお柊《ひいらぎ》さん', 'かな｜東京都《とうきょうと》のは｜魔法使い《まほうつかいさん》だよね']) {
+  const us = units(src)
+  for (let n = 3; n <= 12; n++) {
+    for (const l of breakLines(us, n)) {
+      for (const it of l.items) {
+        // 1語で行より長いものは、どう組んでも収まらない（字数で切る）
+        if (it.unit.kind !== 'ruby' || itemWidth(it) > n) continue
+        const offs = it.unit.rubyOffsets!
+        const from = it.start + it.lead + offs[0]
+        const to = it.start + it.lead + offs[offs.length - 1] + RUBY_SCALE
+        assert.ok(from >= -1e-6 && to <= n + 1e-6, `${n}字: ${text(l)} のルビが ${from.toFixed(2)}〜${to.toFixed(2)}`)
+      }
+    }
+  }
+}
+
 // 傍点は1字ずつ付き、途中で改行できる
 assert.deepEqual(texts('あいう《《ぜったい》》', 5), ['あいうぜっ', 'たい'])
 assert.equal(units('《《強調》》')[0].ruby?.[0], '﹅')

@@ -69,7 +69,7 @@ export function typeset(source: string, font: Font, s: LayoutSettings): TypesetR
       const items = line.hanging ? [...line.items, line.hanging] : line.items
       for (const it of items) {
         // 削った前の空きの分、全角の枠を前に出す
-        const boxTop = top + (it.start - (it.unit.akiBefore - it.before)) * size
+        const boxTop = top + (it.start + it.lead - (it.unit.akiBefore - it.before)) * size
         placeUnit(glyphs, font, it.unit, cx, boxTop, size, onMissing)
       }
     })
