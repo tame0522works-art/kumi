@@ -104,7 +104,7 @@ function placeUnit(out: PlacedGlyph[], font: Font, u: Unit, cx: number, boxTop: 
       const rs = size * RUBY_SCALE
       const rx = cx + size / 2 + rs / 2
       u.ruby!.forEach((ch, k) => {
-        out.push({ gid: gidOf(ch, true), text: ch, mode: 'v', x: rx, y: boxTop + u.rubyOffsets![k] * size, size: rs })
+        out.push({ gid: gidOf(ch, true), text: ch, mode: 'v', x: rx, y: boxTop + u.rubyOffsets![k] * size, size: rs, ruby: true })
       })
       return
     }

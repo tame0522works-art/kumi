@@ -68,7 +68,17 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
     pageRefs.push(ref)
     const ops: string[] = ['BT']
     let current = ''
-    for (const g of page.glyphs) {
+    // ルビ・傍点は本文のあとにまとめ、「本文ではない」印（Artifact）で囲む。
+    // PDF から本文を抜き出す道具は書かれた順に読むので、親文字の直後にルビが混ざらない（「古書店こしょてんは」にならない）。
+    // pdf.js は ActualText も Artifact も見ないので、順番を分けることのほうが効く
+    const body = page.glyphs.filter((g) => !g.ruby)
+    const ruby = page.glyphs.filter((g) => g.ruby)
+    const glyphs = ruby.length ? [...body, null, ...ruby] : body
+    for (const g of glyphs) {
+      if (g === null) {
+        ops.push('/Artifact BMC')
+        continue
+      }
       const tf = `/${g.mode === 'v' ? 'F1' : 'F2'} ${num(g.size)} Tf`
       if (tf !== current) {
         ops.push(tf)
@@ -80,6 +90,7 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
       const matrix = g.mode === 'r' ? `0 -1 1 0 ${x} ${y}` : `${num(g.scaleX ?? 1)} 0 0 1 ${x} ${y}`
       ops.push(`${matrix} Tm <${hex4(g.gid)}> Tj`)
     }
+    if (ruby.length) ops.push('EMC')
     ops.push('ET')
     await w.stream(content, '', utf8(ops.join('\n')))
     w.object(

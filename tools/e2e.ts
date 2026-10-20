@@ -75,6 +75,23 @@ class Ui {
     await sleep(300)
   }
 
+  /** 版面の数値の欄を全選択し、キーを1つずつ押す（利用者が打つのと同じく、1字ごとに入力の知らせが出る） */
+  async pressKeys(label: string, keys: string[]) {
+    await this.click('.settings label', label)
+    await this.page.run(`document.activeElement.select?.()`)
+    for (const key of keys) {
+      const special = key === 'Backspace' ? { code: 'Backspace', windowsVirtualKeyCode: 8 } : key === 'Enter' ? { code: 'Enter', windowsVirtualKeyCode: 13 } : null
+      if (special) {
+        await this.page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, ...special })
+        await this.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, ...special })
+      } else {
+        await this.page.send('Input.dispatchKeyEvent', { type: 'keyDown', key, text: key, code: `Digit${key}`, windowsVirtualKeyCode: key.charCodeAt(0) })
+        await this.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: `Digit${key}`, windowsVirtualKeyCode: key.charCodeAt(0) })
+      }
+      await sleep(120)
+    }
+  }
+
   settings() {
     return this.page.run<string[]>(`return [...document.querySelectorAll('.settings input')].map(i => i.value)`)
   }
@@ -175,6 +192,31 @@ const scenarios: Scenario[] = [
       await ui.choose('新書（緑陽社）')
       assert.deepEqual(await ui.settings(), ['9', '42', '16', '15'])
       assert.ok((await ui.checks())[0].startsWith('ok:'))
+    },
+  },
+  {
+    name: '数値の欄: 1字ずつ打っても途中で範囲に直されず、空にでき、範囲の外は欄を離れたときに直す',
+    async run(ui) {
+      await ui.open()
+      const chars = async () => (await ui.settings())[1]
+      // 「44」を打つ途中の「4」（最小の 10 未満）で 10 に直されない
+      await ui.pressKeys('1行の字数', ['4', '4'])
+      assert.equal(await chars(), '44')
+      assert.equal(await ui.page.run(`return document.querySelector('.settings .range')`), null)
+      // 組版にも反映されている（文庫で 44 字は天地に収まらない）
+      assert.ok((await ui.checks())[0].startsWith('warn:版面の外の余白が 10mm より狭く'))
+      // 消して空にでき、範囲の目安が出る。空のまま離れると元の値に戻る
+      await ui.pressKeys('1行の字数', ['Backspace'])
+      assert.equal(await chars(), '')
+      assert.equal(await ui.page.run(`return document.querySelector('.settings .range').textContent`), '10〜60')
+      await ui.click('textarea')
+      assert.equal(await chars(), '44')
+      // 範囲の外（5）は、Enter で最小の 10 に直す
+      await ui.pressKeys('1行の字数', ['5', 'Enter'])
+      assert.equal(await chars(), '10')
+      // 判型を変えると、その判型の初期値が欄に出る
+      await ui.choose('B6')
+      assert.equal(await chars(), '42')
     },
   },
   {

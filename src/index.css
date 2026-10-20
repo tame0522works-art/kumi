@@ -236,3 +236,10 @@ button.primary {
     max-width: 420px;
   }
 }
+.settings input[aria-invalid='true'] {
+  border-color: var(--warn);
+}
+.settings .range {
+  color: var(--warn);
+  font-size: 0.8rem;
+}

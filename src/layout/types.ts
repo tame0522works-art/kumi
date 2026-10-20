@@ -20,6 +20,8 @@ export interface PlacedGlyph {
   size: number
   /** 横方向の縮め（縦中横が全角に収まらないとき）。1 なら省略 */
   scaleX?: number
+  /** ルビ・傍点。PDF では本文の文字の抜き出しに混ぜない */
+  ruby?: true
 }
 
 export interface Page {

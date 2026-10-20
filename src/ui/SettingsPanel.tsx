@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { FORMATS, settingsFor } from '../layout/formats.ts'
 import type { LayoutSettings } from '../layout/typeset.ts'
 
@@ -25,11 +26,8 @@ const LABELS: Record<Field, string> = {
 }
 
 export function SettingsPanel({ formatId, settings, onChange }: Props) {
-  const set = (field: Field, raw: string) => {
-    const { min, max } = LIMITS[field]
-    const v = Number(raw)
-    if (!Number.isFinite(v) || raw === '') return
-    const next = { ...settings, [field]: Math.min(max, Math.max(min, v)) }
+  const commit = (field: Field, v: number) => {
+    const next = { ...settings, [field]: v }
     // 行送りは文字サイズより狭くできない（行が重なる）
     if (next.lineAdvance < next.fontSize) next.lineAdvance = next.fontSize
     onChange(formatId, next)
@@ -54,14 +52,59 @@ export function SettingsPanel({ formatId, settings, onChange }: Props) {
         </select>
       </label>
       {(Object.keys(LIMITS) as Field[]).map((field) => (
-        <label key={field}>
-          {LABELS[field]}
-          <input type="number" inputMode="decimal" {...LIMITS[field]} value={settings[field]} onChange={(e) => set(field, e.target.value)} />
-        </label>
+        <NumberField key={field} label={LABELS[field]} value={settings[field]} {...LIMITS[field]} onCommit={(v) => commit(field, v)} />
       ))}
       <p className="hint">
         行間 {(settings.lineAdvance - settings.fontSize).toFixed(1)}pt（ルビは行間に入ります）。判型を変えると、版面はその判型の初期値に戻ります。
       </p>
     </fieldset>
+  )
+}
+
+/**
+ * 数値の欄。打っている途中の値（「44」を打つときの「4」や、消して空にしたところ）は範囲に直さずそのまま見せ、
+ * 範囲に収まった時点で組版に反映する。範囲の外や空のまま欄を離れたら（Enter でも）、範囲に収めるか元に戻す。
+ * 打っている途中の値は、打ち始めた（最後に反映した）値と組で持ち、判型の切り替えなどで外から値が変わったら捨てる。
+ */
+function NumberField({ label, value, min, max, step, onCommit }: { label: string; value: number; min: number; max: number; step: number; onCommit: (v: number) => void }) {
+  const [held, setHeld] = useState<{ text: string; base: number } | null>(null)
+  const draft = held && held.base === value ? held.text : null
+  const settle = () => {
+    if (draft === null) return
+    const v = Number(draft)
+    if (draft.trim() !== '' && Number.isFinite(v)) onCommit(Math.min(max, Math.max(min, v)))
+    setHeld(null)
+  }
+  const invalid = draft !== null && !(draft.trim() !== '' && Number(draft) >= min && Number(draft) <= max)
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        inputMode="decimal"
+        min={min}
+        max={max}
+        step={step}
+        value={draft ?? value}
+        aria-invalid={invalid || undefined}
+        onChange={(e) => {
+          const raw = e.target.value
+          const v = Number(raw)
+          const valid = raw.trim() !== '' && v >= min && v <= max
+          // 「9.」のような打ちかけも、反映した値（9）と組で持っておけば、そのまま見せ続けられる
+          setHeld({ text: raw, base: valid ? v : value })
+          if (valid) onCommit(v)
+        }}
+        onBlur={settle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') settle()
+        }}
+      />
+      {invalid && (
+        <span className="range">
+          {min}〜{max}
+        </span>
+      )}
+    </label>
   )
 }
