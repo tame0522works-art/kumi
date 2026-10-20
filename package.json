@@ -1,0 +1,30 @@
+{
+  "name": "kumi",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "小説同人誌の本文を、ブラウザの中だけで縦書きに組んで入稿用 PDF にする",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "check": "npm run check:font",
+    "check:font": "tsx tools/check-font.ts"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.88.0",
+    "pdfjs-dist": "^6.4.299",
+    "tsx": "^4.23.15",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.4"
+  }
+}

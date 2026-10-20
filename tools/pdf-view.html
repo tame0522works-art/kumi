@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- 開発用: 書き出した PDF を pdf.js で大きく描いて確かめる（/tools/pdf-view.html?file=/out/sample.pdf&scale=4） -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>kumi PDF 確認</title>
+    <style>body { margin: 0; background: #555; } canvas { display: block; margin: 8px auto; background: #fff; }</style>
+  </head>
+  <body>
+    <script type="module">
+      import * as pdfjs from 'pdfjs-dist'
+      import worker from 'pdfjs-dist/build/pdf.worker.mjs?url'
+      pdfjs.GlobalWorkerOptions.workerSrc = worker
+      const q = new URLSearchParams(location.search)
+      const scale = Number(q.get('scale') ?? 3)
+      const pdf = await pdfjs.getDocument({ url: q.get('file') ?? '/out/sample.pdf' }).promise
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const viewport = page.getViewport({ scale })
+        const canvas = document.createElement('canvas')
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        document.body.append(canvas)
+        await page.render({ canvas, viewport, intent: 'print' }).promise
+      }
+      const text = await (await pdf.getPage(1)).getTextContent()
+      window.extracted = text.items.map((t) => t.str).join('')
+      document.title = 'done'
+    </script>
+  </body>
+</html>
