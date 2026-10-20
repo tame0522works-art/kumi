@@ -35,7 +35,7 @@ export const RUBY_SCALE = 0.5
 /** ルビが前後の仮名・約物にはみ出してよい長さ（ルビ1字の半分 = 親文字の四分） */
 const RUBY_OVERHANG = RUBY_SCALE / 2
 
-const TOKEN = /[A-Za-z][A-Za-z0-9'’.\-]*|[0-9]+(?:[A-Za-z][A-Za-z0-9'’.\-]*)?|[!?！？]{2,}| +|[\s\S]/gu
+const TOKEN = /[A-Za-z][A-Za-z0-9'’.-]*|[0-9]+(?:[A-Za-z][A-Za-z0-9'’.-]*)?|[!?！？]{2,}| +|[\s\S]/gu
 const HALF = (s: string) => s.replace(/[！？]/g, (c) => (c === '！' ? '!' : '?'))
 
 export function buildUnits(paragraph: Paragraph, font: Font): Unit[] {
