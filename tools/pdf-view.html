@@ -1,5 +1,10 @@
 <!doctype html>
-<!-- 開発用: 書き出した PDF を pdf.js で大きく描いて確かめる（/tools/pdf-view.html?file=/out/sample.pdf&scale=4） -->
+<!--
+  開発用: 書き出した PDF を pdf.js で描いて確かめる。
+  /tools/pdf-view.html?file=/out/sample.pdf&scale=4            全ページ
+  /tools/pdf-view.html?page=1&cx=150&cy=90&r=40                ページ1の (150, 90)pt を中心に、半径 40pt の範囲を画面いっぱいに拡大
+  座標は仕上がりの左上が原点（塗り足しを含まない、y は下向き。tools/find-glyphs.ts の出力と同じ）
+-->
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
@@ -12,18 +17,40 @@
       import worker from 'pdfjs-dist/build/pdf.worker.mjs?url'
       pdfjs.GlobalWorkerOptions.workerSrc = worker
       const q = new URLSearchParams(location.search)
-      const scale = Number(q.get('scale') ?? 3)
       const pdf = await pdfjs.getDocument({ url: q.get('file') ?? '/out/sample.pdf' }).promise
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i)
+      if (q.has('cx')) {
+        document.body.style.margin = '0'
+        const page = await pdf.getPage(Number(q.get('page') ?? 1))
+        const bleed = 3 * 72 / 25.4
+        const r = Number(q.get('r') ?? 40)
+        const side = Math.min(innerWidth, innerHeight)
+        const scale = side / (r * 2)
         const viewport = page.getViewport({ scale })
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width
         canvas.height = viewport.height
-        document.body.append(canvas)
         await page.render({ canvas, viewport, intent: 'print' }).promise
+        const view = document.createElement('canvas')
+        view.width = side
+        view.height = side
+        view.style.margin = '0'
+        const sx = (Number(q.get('cx')) + bleed - r) * scale
+        const sy = (Number(q.get('cy')) + bleed - r) * scale
+        view.getContext('2d').drawImage(canvas, sx, sy, side, side, 0, 0, side, side)
+        document.body.append(view)
+      } else {
+        const scale = Number(q.get('scale') ?? 3)
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i)
+          const viewport = page.getViewport({ scale })
+          const canvas = document.createElement('canvas')
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          document.body.append(canvas)
+          await page.render({ canvas, viewport, intent: 'print' }).promise
+        }
       }
-      const text = await (await pdf.getPage(1)).getTextContent()
+      const text = await (await pdf.getPage(Number(q.get('page') ?? 1))).getTextContent()
       window.extracted = text.items.map((t) => t.str).join('')
       document.title = 'done'
     </script>

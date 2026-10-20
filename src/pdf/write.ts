@@ -15,6 +15,7 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
   const catalog = w.reserve()
   const pages = w.reserve()
   const type0 = w.reserve()
+  const type0h = w.reserve()
   const cidFont = w.reserve()
   const descriptor = w.reserve()
   const fontFile = w.reserve()
@@ -26,7 +27,9 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
   const tag = subsetTag(gids)
   const baseFont = `${tag}+${fontName}`
 
+  // 縦組み用（F1）と、縦中横・横倒しの欧文に使う横組み用（F2）。字形と寸法の本体（CIDFont）は共有する
   w.object(type0, `<< /Type /Font /Subtype /Type0 /BaseFont /${baseFont} /Encoding /Identity-V /DescendantFonts [${cidFont} 0 R] /ToUnicode ${toUnicode} 0 R >>`)
+  w.object(type0h, `<< /Type /Font /Subtype /Type0 /BaseFont /${baseFont} /Encoding /Identity-H /DescendantFonts [${cidFont} 0 R] /ToUnicode ${toUnicode} 0 R >>`)
 
   // 縦の原点は「字の外形の上端 + 上の余白（vmtx の tsb）」。和文の字形ではほぼ全部が仮想ボディの上端にそろうので、
   // 既定値（DW2）をそれにして、外れる字形だけ W2 に書く
@@ -64,21 +67,25 @@ export async function writePdf(doc: TypesetDocument, font: Font, fontName = 'BIZ
     const content = w.reserve()
     pageRefs.push(ref)
     const ops: string[] = ['BT']
-    let size = -1
+    let current = ''
     for (const g of page.glyphs) {
-      if (g.size !== size) {
-        ops.push(`/F1 ${num(g.size)} Tf`)
-        size = g.size
+      const tf = `/${g.mode === 'v' ? 'F1' : 'F2'} ${num(g.size)} Tf`
+      if (tf !== current) {
+        ops.push(tf)
+        current = tf
       }
-      // 縦書きの文字位置は「仮想ボディ上辺の中央」。PDF は y が上向きなので反転する
-      ops.push(`1 0 0 1 ${num(g.x + doc.bleed)} ${num(doc.height + doc.bleed - g.y)} Tm <${hex4(g.gid)}> Tj`)
+      // PDF は y が上向きなので反転する。横倒しは字の進む向きを下、字の上を右に回す
+      const x = num(g.x + doc.bleed)
+      const y = num(doc.height + doc.bleed - g.y)
+      const matrix = g.mode === 'r' ? `0 -1 1 0 ${x} ${y}` : `${num(g.scaleX ?? 1)} 0 0 1 ${x} ${y}`
+      ops.push(`${matrix} Tm <${hex4(g.gid)}> Tj`)
     }
     ops.push('ET')
     await w.stream(content, '', utf8(ops.join('\n')))
     w.object(
       ref,
       `<< /Type /Page /Parent ${pages} 0 R /MediaBox [${media}] /TrimBox [${trim}] /BleedBox [${media}] ` +
-        `/Resources << /Font << /F1 ${type0} 0 R >> >> /Contents ${content} 0 R >>`,
+        `/Resources << /Font << /F1 ${type0} 0 R /F2 ${type0h} 0 R >> >> /Contents ${content} 0 R >>`,
     )
   }
   w.object(pages, `<< /Type /Pages /Kids [${pageRefs.map((r) => `${r} 0 R`).join(' ')}] /Count ${pageRefs.length} >>`)

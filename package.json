@@ -9,8 +9,13 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "check": "npm run check:font",
-    "check:font": "tsx tools/check-font.ts"
+    "check": "npm run check:font && npm run check:parse && npm run check:lines && npm run check:formats && npm run check:tonbo",
+    "check:font": "tsx tools/check-font.ts",
+    "check:parse": "tsx tools/check-parse.ts",
+    "check:lines": "tsx tools/check-lines.ts",
+    "check:formats": "tsx tools/check-formats.ts",
+    "check:tonbo": "tsx tools/check-tonbo.ts",
+    "sample": "tsx tools/sample-pdf.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
