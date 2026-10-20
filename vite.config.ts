@@ -42,6 +42,10 @@ function fontAsModule(): Plugin {
       if (!id.endsWith('.ttf?b64')) return
       return `export default ${JSON.stringify(readFileSync(id.slice(0, -4)).toString('base64'))}`
     },
+    // OFL はフォントと一緒にライセンス文を配ることを求めるので、公開版にも置く（画面の下からリンク）
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'OFL.txt', source: readFileSync('fonts/OFL.txt') })
+    },
   }
 }
 

@@ -156,7 +156,7 @@ export default function App() {
 
       <footer>
         <p>
-          本文の書体は BIZ UD明朝（SIL Open Font License 1.1）。組版の規則は W3C「日本語組版処理の要件」（JLREQ）に基づきます。
+          本文の書体は BIZ UD明朝（<a href="OFL.txt">SIL Open Font License 1.1</a>）。組版の規則は W3C「日本語組版処理の要件」（JLREQ）に基づきます。
         </p>
       </footer>
     </main>

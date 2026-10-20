@@ -5,8 +5,7 @@ dist
 .DS_Store
 .vscode/*
 .idea
-dist-pages
 dist-e2e
 e2e-failures
-sources-report.md
 out
+dist-pages
